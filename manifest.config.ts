@@ -1,11 +1,11 @@
 import { defineManifest } from "@crxjs/vite-plugin";
 import pkg from "./package.json";
 
-// BELANGRIJK — TODO vóór gebruik (zie PLAN.md §8.8): "matches" hieronder is
-// bewust breed (<all_urls>) omdat het exacte domein van PGO Ivido nog niet
-// bekend is bij het opzetten van dit project. Vervang dit door het echte
-// Ivido-domein zodra dat bekend is, conform de architectuurkeuze om zo smal
-// mogelijke host-permissions te gebruiken.
+// Bewust <all_urls> (afwijking van de "zo smal mogelijk"-aanbeveling uit
+// PLAN.md §8.8, expliciete gebruikerskeuze): het content script doet toch
+// niets vanzelf — het reageert alleen op berichten van de side panel — en
+// de gebruiker kan de extensie altijd uitzetten/deïnstalleren. Geen
+// domeinspecifieke matches nodig.
 const PGO_MATCHES = ["<all_urls>"];
 
 export default defineManifest({

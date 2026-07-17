@@ -1039,23 +1039,21 @@ maar op een handvol plekken hoeft te werken.
   host-permission alleen voor de capture. Praktisch betekent dit dat de capture
   getriggerd wordt vanuit een expliciete gebruikersactie (knop/hotkey), wat
   inhoudelijk toch al de bedoeling is.
-- **Host-permissions — smal, drie à vier concrete domeinen** i.p.v.
-  `<all_urls>`:
-  - het **PGO-domein (Ivido)** — waar het content script draait en de DOM
-    gelezen wordt;
-  - het **Nictiz-wiki-domein** — voor de eenmalige `fetch` van het
-    kwalificatiescript;
-  - het **GitHub raw-content-domein** — voor de FHIR-fixtures;
-  - het **Anthropic API-domein** (`api.anthropic.com`) — voor de vision-call.
-- **Wat de smalheid betekent:** de extensie kan/mag *niets* op willekeurige
-  websites; hij werkt alleen op de PGO en leest alleen die vier bronnen. Dat is
-  prettig voor vertrouwen en review, en het is voldoende voor de PoC (één PGO,
-  één gegevensdienst). **Trade-off/consequentie voor de toekomst:** zodra je
-  meerdere PGO's of andere wiki-/bron-locaties wilt ondersteunen (§4.2), moet
-  je die domeinen toevoegen — óf overstappen op optionele host-permissions
-  (`optional_host_permissions`) die de gebruiker per omgeving toestaat. Voor nu
-  is de vaste, smalle lijst het eenvoudigst en veiligst; de
-  optionele-permissions-route is een bekende uitbreiding, geen herbouw.
+- **Host-permissions voor de drie vaste bronnen — smal:** Nictiz-wiki (eenmalige
+  `fetch` van het kwalificatiescript), GitHub raw-content (FHIR-fixtures) en
+  het Anthropic API-domein (`api.anthropic.com`, vision-call) staan als
+  concrete domeinen in `host_permissions`, niet als `<all_urls>`.
+- **Content_scripts-matches (afwijking, expliciete gebruikerskeuze):** in
+  plaats van het content script te beperken tot het PGO-domein (Ivido), draait
+  het bewust op `<all_urls>`. Reden: het content script doet niets vanzelf —
+  het reageert alleen op berichten van de side panel (§8.2) — en de gebruiker
+  kan de extensie altijd uitzetten/deïnstalleren. Dit weegt voor deze PoC
+  zwaarder dan de "zo smal mogelijk"-aanbeveling hierboven.
+- **Trade-off/consequentie voor de toekomst:** zodra dit verder gaat dan de
+  PoC van één gebruiker (§4.2, meerdere gebruikers/PGO's), is het opnieuw de
+  moeite waard om dit tegen het licht te houden — bv. alsnog domeinspecifieke
+  matches, of `optional_host_permissions` die de gebruiker per omgeving
+  toestaat. Voor nu is `<all_urls>` een bewuste, geen per-ongeluk brede keuze.
 
 ### 8.9 Minimale foutafhandeling voor een bruikbare PoC
 
