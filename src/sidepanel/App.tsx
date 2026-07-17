@@ -17,6 +17,30 @@ import {
 
 type Step = "start" | "navigate" | "review" | "overview" | "report-done";
 
+/** Status-indicator voor het overzicht. Bewust blauw/oranje i.p.v. groen/rood
+ * (de klassieke rood-groen-kleurenblindheid maakt dat paar onbetrouwbaar), én
+ * met een tekstlabel naast het symbool — kleur/symbool alleen is niet genoeg
+ * contrast/onderscheid. */
+function StatusBadge({ shown }: { shown: boolean }) {
+  const palette = shown
+    ? { background: "#dbeafe", color: "#1e3a8a" }
+    : { background: "#ffedd5", color: "#9a3412" };
+  return (
+    <span
+      style={{
+        ...palette,
+        display: "inline-block",
+        fontWeight: "bold",
+        fontSize: "12px",
+        padding: "0.1rem 0.45rem",
+        borderRadius: "4px",
+      }}
+    >
+      {shown ? "✓ Aangetoond" : "✗ Ontbrekend"}
+    </span>
+  );
+}
+
 export function App() {
   const [step, setStep] = useState<Step>("start");
   const [error, setError] = useState<string | undefined>(undefined);
@@ -246,8 +270,8 @@ export function App() {
                 {overview
                   .filter((row) => row.scenario.id === scenario.id)
                   .map((row) => (
-                    <li key={row.item.id}>
-                      {row.shown ? "✓" : "✗"} {row.item.label}
+                    <li key={row.item.id} style={{ marginBottom: "0.3rem" }}>
+                      <StatusBadge shown={row.shown} /> {row.item.label}
                       {!row.shown && (
                         <input
                           placeholder="Toelichting (optioneel)"
