@@ -2,6 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import { computeDefaultTDate } from "../shared/tDate";
 import type { CaptureEvidenceCommand } from "../shared/messages";
 import type { QualificationScript, Scenario, Session } from "../shared/types";
+import { loadActiveSession, saveActiveSession } from "./activeSessionStore";
 import {
   buildAndDownloadReport,
   captureAndSuggest,
@@ -33,6 +34,21 @@ export function App() {
 
   const [overview, setOverview] = useState<OverviewRow[]>([]);
 
+  // Herstelt een lopende sessie na het sluiten/heropenen van de side panel
+  // (§7.1/UX: de gebruiker hoeft de kwalificatiescript-URL niet opnieuw in te
+  // voeren binnen dezelfde browsersessie). Draaien we nog niet, dan blijft
+  // de gebruiker gewoon op het start-scherm.
+  useEffect(() => {
+    loadActiveSession().then((active) => {
+      if (!active) return;
+      setSession(active.session);
+      setScript(active.script);
+      setScriptUrl(active.session.qualificationScriptUrl);
+      setTDate(active.session.tDate);
+      setStep("navigate");
+    });
+  }, []);
+
   async function handleStart() {
     setBusy(true);
     setError(undefined);
@@ -40,6 +56,7 @@ export function App() {
       const result = await startSession(scriptUrl, tDate);
       setSession(result.session);
       setScript(result.script);
+      await saveActiveSession(result.session, result.script);
       setStep("navigate");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
