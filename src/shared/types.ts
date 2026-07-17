@@ -115,6 +115,10 @@ export interface AiSuggestionElement {
   visible: boolean;
   confidence: number;
   explanation: string;
+  /** Letterlijk citaat van tekst die de AI op de afbeelding zag ter onderbouwing
+   * van `visible` (§8.4: anti-hallucinatie — een claim zonder citaat wordt
+   * niet vertrouwd, zie aiVisionProvider.ts). */
+  visualEvidence?: string;
   roughRegion?: Rect;
 }
 

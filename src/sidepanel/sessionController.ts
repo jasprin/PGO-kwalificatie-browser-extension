@@ -25,6 +25,15 @@ function generateId(): string {
   return crypto.randomUUID();
 }
 
+/** Onder deze drempel wordt een gevonden element wél getoond (met zijn
+ * confidence/toelichting, zodat de leverancier het kan beoordelen) maar NIET
+ * vooraf aangevinkt — de mens moet het dan bewust bevestigen i.p.v. bewust
+ * moeten afvinken (§3, §7.1; issue #22). Onafhankelijk van het vangnet in
+ * aiVisionProvider.ts: dit geldt voor zowel DOM- als AI-matches, en vangt ook
+ * zwakke DOM-matchlagen (token-overlap/Levenshtein) op die wél een citaat/
+ * region-equivalent hebben maar toch een laag vertrouwen verdienen. */
+const AUTO_CONFIRM_CONFIDENCE_THRESHOLD = 0.85;
+
 /** Plaatshouder-rect voor bevestigde elementen zonder bekende locatie (bv.
  * een AI-treffer zonder region) — gestapeld in de linkerbovenhoek, zodat het
  * element in elk geval getekend en meegeteld wordt i.p.v. stilzwijgend te
@@ -69,6 +78,7 @@ export interface ProposedElement {
   visible: boolean;
   confidence: number;
   explanation?: string;
+  visualEvidence?: string;
   source: "dom" | "ai";
   rect?: { x: number; y: number; width: number; height: number };
 }
@@ -137,20 +147,23 @@ export async function captureAndSuggest(
         checklistItemId: item.id,
         scenarioId: targetScenario.id,
         label: item.label,
-        visible: true,
+        visible: domMatch.confidence >= AUTO_CONFIRM_CONFIDENCE_THRESHOLD,
         confidence: domMatch.confidence,
         source: "dom",
         rect: domMatch.rect,
       };
     }
     const aiElement = aiSuggestion?.elements.find((e) => e.checklistItemId === item.id);
+    const aiConfidence = aiElement?.confidence ?? 0;
     return {
       checklistItemId: item.id,
       scenarioId: targetScenario.id,
       label: item.label,
-      visible: aiElement?.visible ?? false,
-      confidence: aiElement?.confidence ?? 0,
+      visible:
+        (aiElement?.visible ?? false) && aiConfidence >= AUTO_CONFIRM_CONFIDENCE_THRESHOLD,
+      confidence: aiConfidence,
       explanation: aiElement?.explanation,
+      visualEvidence: aiElement?.visualEvidence,
       source: "ai",
       // Kan ontbreken als de AI geen region opgaf — confirmEvidence valt dan
       // terug op een plaatshouder-rect (§7.1: AI levert mogelijk een ruwer

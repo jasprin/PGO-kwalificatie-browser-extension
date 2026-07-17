@@ -249,6 +249,11 @@ export function App() {
                     ({el.source}, {(el.confidence * 100).toFixed(0)}%)
                   </em>
                   {el.explanation && <div style={{ color: "#666" }}>{el.explanation}</div>}
+                  {el.visualEvidence && (
+                    <div style={{ color: "#666", fontStyle: "italic" }}>
+                      Citaat AI: “{el.visualEvidence}”
+                    </div>
+                  )}
                 </label>
               </li>
             ))}

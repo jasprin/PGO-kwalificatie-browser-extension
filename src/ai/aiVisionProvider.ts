@@ -33,7 +33,7 @@ function buildTool(checklistItemIds: string[]) {
   return {
     name: TOOL_NAME,
     description:
-      "Rapporteer per verwacht data-element of het zichtbaar is op de screenshot, met toelichting.",
+      "Rapporteer per verwacht data-element of het zichtbaar is op de screenshot, met een citaat als bewijs.",
     input_schema: {
       type: "object",
       properties: {
@@ -42,15 +42,31 @@ function buildTool(checklistItemIds: string[]) {
           type: "array",
           items: {
             type: "object",
+            // Bewuste volgorde (§8.4, anti-hallucinatie): visualEvidence staat
+            // vóór visible/confidence in het schema, zodat het model eerst een
+            // citaat "vastlegt" en pas daarna een oordeel geeft — i.p.v. een
+            // oordeel te geven en dat achteraf te rationaliseren. Los daarvan
+            // wordt een ontbrekend citaat hieronder (suggestEvidence) hoe dan
+            // ook hard afgedwongen, ongeacht of het model deze volgorde/instructie
+            // negeert.
             properties: {
               checklistItemId: { type: "string", enum: checklistItemIds },
-              visible: { type: "boolean" },
+              visualEvidence: {
+                type: "string",
+                description:
+                  'Citeer EXACT de tekst zoals die letterlijk op de afbeelding staat en die dit element bewijst (bv. de daadwerkelijk getoonde datum/naam/code). Laat leeg ("") als je niets op de afbeelding kunt aanwijzen. Verzin nooit een citaat — een verwachte waarde die je hierboven in de lijst zag staan is GEEN citaat van de afbeelding.',
+              },
+              visible: {
+                type: "boolean",
+                description:
+                  "Alleen true als visualEvidence een echt citaat van de afbeelding bevat. Bij een lege visualEvidence moet dit false zijn.",
+              },
               confidence: { type: "number", minimum: 0, maximum: 1 },
               explanation: { type: "string" },
               region: {
                 type: "object",
                 description:
-                  "Alleen als visible=true: een ruwe schatting van waar het element op de afbeelding staat, als fractie (0-1) van breedte/hoogte. Bij twijfel weglaten.",
+                  "Verplicht als visible=true: waar op de afbeelding het element staat, als fractie (0-1) van breedte/hoogte. Kun je geen locatie aanwijzen, rapporteer dan visible=false.",
                 properties: {
                   x: { type: "number", minimum: 0, maximum: 1 },
                   y: { type: "number", minimum: 0, maximum: 1 },
@@ -60,7 +76,13 @@ function buildTool(checklistItemIds: string[]) {
                 required: ["x", "y", "width", "height"],
               },
             },
-            required: ["checklistItemId", "visible", "confidence", "explanation"],
+            required: [
+              "checklistItemId",
+              "visualEvidence",
+              "visible",
+              "confidence",
+              "explanation",
+            ],
           },
         },
       },
@@ -91,13 +113,19 @@ function buildPrompt(context: AiVisionContext): string {
 
   return `Je krijgt een screenshot van een Persoonlijke Gezondheidsomgeving (PGO) tijdens een MedMij-kwalificatietest. Alle getoonde data is fictieve testdata, geen echte patiëntgegevens.
 
-Bekende scenario's en verwachte data-elementen voor deze gegevensdienst:
+Bekende scenario's en verwachte data-elementen voor deze gegevensdienst — deze lijst dient UITSLUITEND om afwijkend weergegeven waarden te herkennen (bv. een andere datumnotatie of een afkorting). De lijst is geen bevestiging dat een element zichtbaar is:
 
 ${scenarioLines}
 
 ${alreadyFound}
 
-Bepaal: (a) bij welk scenario dit scherm hoort, (b) welke verwachte elementen zichtbaar zijn (concentreer je op elementen die nog NIET via tekstmatch gevonden zijn — die zijn mogelijk anders weergegeven dan de rauwe testwaarde, bv. vertaald, samengevat, of als vrije tekst), (c) geef per element een korte toelichting voor een beoordelaar die de applicatie niet kent, en (d) geef voor elk zichtbaar element ook een ruwe "region" (fractie 0-1 van breedte/hoogte van de afbeelding) van waar het ongeveer staat — nodig om het element op het beeld te kunnen markeren. Rapporteer je bevindingen via de report_evidence-tool.`;
+Lees dit aandachtig, het is de kern van je taak:
+- Op één schermafbeelding is meestal maar een klein deel van bovenstaande lijst daadwerkelijk zichtbaar. Voor de meeste elementen is visible=false het juiste antwoord — dat is normaal, geen falen.
+- Ga er NOOIT van uit dat een element zichtbaar is enkel omdat het hierboven genoemd wordt. Bekijk per element daadwerkelijk de afbeelding.
+- Vul visualEvidence altijd EERST in met een letterlijk citaat van tekst die je op de afbeelding ziet staan. Kun je niets citeren, dan is visible=false en visualEvidence leeg. Verzin nooit een citaat — het overnemen van de verwachte waarde uit de lijst hierboven telt niet als citaat van de afbeelding.
+- Een onterecht "zichtbaar" gerapporteerd element is voor deze kwalificatietest schadelijker dan een gemist element: een gemist element kan de gebruiker zelf alsnog aanvinken, maar een fout "gevonden" element ondermijnt de betrouwbaarheid van het hele bewijsrapport. Wees dus conservatief: bij twijfel altijd visible=false.
+
+Bepaal: (a) bij welk scenario dit scherm hoort, (b) welke verwachte elementen daadwerkelijk zichtbaar zijn (concentreer je op elementen die nog NIET via tekstmatch gevonden zijn — die zijn mogelijk anders weergegeven dan de rauwe testwaarde, bv. vertaald, samengevat, of als vrije tekst), (c) citeer per zichtbaar element de letterlijke tekst (visualEvidence) en geef een korte toelichting voor een beoordelaar die de applicatie niet kent, en (d) geef voor elk zichtbaar element ook een region (fractie 0-1 van breedte/hoogte van de afbeelding) van waar het ongeveer staat. Rapporteer je bevindingen via de report_evidence-tool.`;
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -187,6 +215,7 @@ interface RawSuggestionElement {
   visible: boolean;
   confidence: number;
   explanation?: string;
+  visualEvidence?: string;
   region?: RawRegion;
 }
 
@@ -235,13 +264,20 @@ async function getImageDimensions(blob: Blob): Promise<{ width: number; height: 
   return { width, height };
 }
 
+/** Een "zichtbaar"-claim zonder citaat en zonder locatie is per definitie niet
+ * onderbouwd (§8.4, anti-hallucinatie) — ongeacht de gerapporteerde confidence. */
+function isGrounded(element: RawSuggestionElement): boolean {
+  return Boolean(element.region) && Boolean(element.visualEvidence?.trim());
+}
+
 function needsEscalation(suggestion: RawSuggestion): boolean {
   const visibleElements = suggestion.elements.filter((e) => e.visible);
   if (visibleElements.length === 0) return false;
   const lowConfidence = visibleElements.some(
     (e) => e.confidence < LOW_CONFIDENCE_THRESHOLD,
   );
-  return lowConfidence;
+  const ungrounded = visibleElements.some((e) => !isGrounded(e));
+  return lowConfidence || ungrounded;
 }
 
 class ClaudeAiVisionProvider implements AiVisionProvider {
@@ -290,13 +326,29 @@ class ClaudeAiVisionProvider implements AiVisionProvider {
     }
 
     const { width, height } = await getImageDimensions(screenshot);
-    const elements: AiSuggestionElement[] = input.elements.map((el) => ({
-      checklistItemId: el.checklistItemId,
-      visible: el.visible,
-      confidence: el.confidence,
-      explanation: el.explanation ?? "",
-      roughRegion: regionToPixelRect(el.region, width, height),
-    }));
+    // Hard vangnet (§8.4, direct gemotiveerd door een bevestigde hallucinatie
+    // tijdens live-testen tegen Ivido, issue #18): een claim "visible: true"
+    // zonder citaat + locatie wordt hier ALTIJD teruggezet naar niet-zichtbaar,
+    // los van of het model de prompt-instructie om conservatief te zijn heeft
+    // gevolgd. De oorspronkelijke toelichting van de AI blijft zichtbaar voor
+    // de reviewer, zodat niets stilzwijgend verdwijnt — de mens beslist alsnog
+    // (PLAN.md §3), maar het vinkje staat niet ten onrechte al aan.
+    const elements: AiSuggestionElement[] = input.elements.map((el) => {
+      const grounded = isGrounded(el);
+      const visible = el.visible && grounded;
+      const explanation =
+        el.visible && !grounded
+          ? `[Automatisch afgewezen: geen citaat/locatie als onderbouwing] ${el.explanation ?? ""}`.trim()
+          : (el.explanation ?? "");
+      return {
+        checklistItemId: el.checklistItemId,
+        visible,
+        confidence: visible ? el.confidence : 0,
+        explanation,
+        visualEvidence: el.visualEvidence,
+        roughRegion: regionToPixelRect(el.region, width, height),
+      };
+    });
 
     return { scenarioId: input.scenarioId, elements, model: usedModel };
   }
