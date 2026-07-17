@@ -136,7 +136,7 @@ export function App() {
 
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", padding: "0.75rem", fontSize: "13px" }}>
-      <h1 style={{ fontSize: "15px" }}>PGO-kwalificatie Bewijsassistent</h1>
+      <h1 style={{ fontSize: "15px" }}>PGO kwalificatie extension</h1>
       {error && <p style={{ color: "#b00020" }}>Fout: {error}</p>}
 
       {step === "start" && (

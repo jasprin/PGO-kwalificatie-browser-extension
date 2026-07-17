@@ -10,12 +10,12 @@ const PGO_MATCHES = ["<all_urls>"];
 
 export default defineManifest({
   manifest_version: 3,
-  name: "PGO-kwalificatie Bewijsassistent",
+  name: "PGO kwalificatie extension",
   version: pkg.version,
   description:
     "Helpt PGO-leveranciers bij het MedMij-kwalificatietraject (systeemrol Raadplegen) door bewijs-screenshots te markeren en een zelfverklarend rapport te genereren.",
   action: {
-    default_title: "PGO-kwalificatie Bewijsassistent",
+    default_title: "PGO kwalificatie extension",
   },
   side_panel: {
     default_path: "src/sidepanel/index.html",

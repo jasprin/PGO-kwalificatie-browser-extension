@@ -1,4 +1,4 @@
-# PGO-kwalificatie Bewijsassistent
+# PGO kwalificatie extension
 
 Browserextensie die PGO-leveranciers helpt bij het MedMij-kwalificatietraject
 voor systeemrol **Raadplegen**. Tijdens het testen van de eigen PGO legt de
