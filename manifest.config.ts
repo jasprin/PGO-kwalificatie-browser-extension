@@ -33,15 +33,14 @@ export default defineManifest({
     },
   ],
   permissions: ["sidePanel", "storage", "unlimitedStorage", "downloads", "activeTab", "commands"],
-  host_permissions: [
-    // Nictiz-wiki: ophalen van het kwalificatiescript (§1.5, §8.5)
-    "https://informatiestandaarden.nictiz.nl/*",
-    // Publieke FHIR-testfixtures (§1.6, §8.5): bestandslijst + ruwe inhoud
-    "https://api.github.com/*",
-    "https://raw.githubusercontent.com/*",
-    // Claude vision-API (§8.4)
-    "https://api.anthropic.com/*",
-  ],
+  // Bewust <all_urls> i.p.v. losse domeinen (zelfde afweging als de
+  // content_scripts-matches hierboven): chrome.tabs.captureVisibleTab()
+  // vereist activeTab (alleen geactiveerd door een klik op het
+  // werkbalk-icoon/hotkey/contextmenu, NIET door een knop binnenin een al
+  // geopend side panel) of een host-permissie voor de pagina. Omdat "hier is
+  // bewijs" primair een side panel-knop is, moet de host-permissie het
+  // werk doen — <all_urls> dekt dat voor elke PGO, ongeacht domein.
+  host_permissions: ["<all_urls>"],
   commands: {
     "capture-evidence": {
       suggested_key: {
