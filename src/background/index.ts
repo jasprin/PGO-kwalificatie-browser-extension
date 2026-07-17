@@ -6,11 +6,16 @@
 
 import type { CaptureEvidenceCommand } from "../shared/messages";
 
-// Expliciet afgehandeld i.p.v. via chrome.sidePanel.setPanelBehavior() in
-// onInstalled: die instelling wordt maar één keer gezet en bleek onbetrouwbaar
-// bij herhaald herladen van de (unpacked) extensie tijdens ontwikkeling. Een
-// directe onClicked-listener werkt altijd, ongeacht wanneer/hoe vaak de
-// extensie opnieuw geladen is.
+// Belangrijk: chrome.sidePanel.open-on-click en chrome.action.onClicked zijn
+// wederzijds exclusief — als openPanelOnActionClick ooit op true is gezet
+// (bv. door een eerdere versie van deze code), blijft die vlag hangen in het
+// browserprofiel, ook nadat de aanroep uit de code is gehaald, en onderdrukt
+// die dan alsnog onClicked. Daarom hier expliciet terugzetten naar false vóór
+// de onClicked-listener wordt geregistreerd.
+chrome.sidePanel
+  .setPanelBehavior({ openPanelOnActionClick: false })
+  .catch((error) => console.error("Kon side panel-gedrag niet resetten:", error));
+
 chrome.action.onClicked.addListener(async (tab) => {
   if (tab.windowId !== undefined) {
     await chrome.sidePanel.open({ windowId: tab.windowId });
