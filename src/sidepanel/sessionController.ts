@@ -15,6 +15,7 @@ import type {
   Evidence,
   Marking,
   QualificationScript,
+  Rect,
   Scenario,
   Session,
 } from "../shared/types";
@@ -22,6 +23,14 @@ import type { FindMatchesRequest, FindMatchesResponse } from "../shared/messages
 
 function generateId(): string {
   return crypto.randomUUID();
+}
+
+/** Plaatshouder-rect voor bevestigde elementen zonder bekende locatie (bv.
+ * een AI-treffer zonder region) — gestapeld in de linkerbovenhoek, zodat het
+ * element in elk geval getekend en meegeteld wordt i.p.v. stilzwijgend te
+ * verdwijnen. */
+function fallbackRect(index: number): Rect {
+  return { x: 8, y: 8 + index * 28, width: 20, height: 20 };
 }
 
 export async function startSession(
@@ -143,6 +152,10 @@ export async function captureAndSuggest(
       confidence: aiElement?.confidence ?? 0,
       explanation: aiElement?.explanation,
       source: "ai",
+      // Kan ontbreken als de AI geen region opgaf — confirmEvidence valt dan
+      // terug op een plaatshouder-rect (§7.1: AI levert mogelijk een ruwer
+      // gebied, maar het element moet wél getekend/geteld kunnen worden).
+      rect: aiElement?.roughRegion,
     };
   });
 
@@ -163,10 +176,15 @@ export async function confirmEvidence(
     await sessionEvidenceStore.createSession(session);
   }
 
-  const visible = confirmedElements.filter((e) => e.visible && e.rect);
+  // Belangrijk: een bevestigd zichtbaar element telt altijd mee in
+  // evidence.markings — ook als er geen (betrouwbare) rect bekend is (bv. een
+  // AI-treffer zonder region). Zonder dit werden zulke elementen stilzwijgend
+  // niet opgeslagen, waardoor ze noch getekend werden, noch in het overzicht
+  // als "aangetoond" verschenen — ontdekt tijdens het testen tegen Ivido.
+  const visible = confirmedElements.filter((e) => e.visible);
   const markings: Marking[] = visible.map((element, index) => ({
     checklistItemId: element.checklistItemId,
-    rect: element.rect!,
+    rect: element.rect ?? fallbackRect(index),
     source: element.source,
     confidence: element.confidence,
     sequenceNumber: index + 1,

@@ -6,6 +6,7 @@ import type {
   AiSuggestion,
   AiSuggestionElement,
   AiVisionContext,
+  Rect,
 } from "../shared/types";
 import { settingsRepository } from "../storage/repositories";
 
@@ -46,6 +47,18 @@ function buildTool(checklistItemIds: string[]) {
               visible: { type: "boolean" },
               confidence: { type: "number", minimum: 0, maximum: 1 },
               explanation: { type: "string" },
+              region: {
+                type: "object",
+                description:
+                  "Alleen als visible=true: een ruwe schatting van waar het element op de afbeelding staat, als fractie (0-1) van breedte/hoogte. Bij twijfel weglaten.",
+                properties: {
+                  x: { type: "number", minimum: 0, maximum: 1 },
+                  y: { type: "number", minimum: 0, maximum: 1 },
+                  width: { type: "number", minimum: 0, maximum: 1 },
+                  height: { type: "number", minimum: 0, maximum: 1 },
+                },
+                required: ["x", "y", "width", "height"],
+              },
             },
             required: ["checklistItemId", "visible", "confidence", "explanation"],
           },
@@ -84,7 +97,7 @@ ${scenarioLines}
 
 ${alreadyFound}
 
-Bepaal: (a) bij welk scenario dit scherm hoort, (b) welke verwachte elementen zichtbaar zijn (concentreer je op elementen die nog NIET via tekstmatch gevonden zijn — die zijn mogelijk anders weergegeven dan de rauwe testwaarde, bv. vertaald, samengevat, of als vrije tekst), en (c) geef per element een korte toelichting voor een beoordelaar die de applicatie niet kent. Rapporteer je bevindingen via de report_evidence-tool.`;
+Bepaal: (a) bij welk scenario dit scherm hoort, (b) welke verwachte elementen zichtbaar zijn (concentreer je op elementen die nog NIET via tekstmatch gevonden zijn — die zijn mogelijk anders weergegeven dan de rauwe testwaarde, bv. vertaald, samengevat, of als vrije tekst), (c) geef per element een korte toelichting voor een beoordelaar die de applicatie niet kent, en (d) geef voor elk zichtbaar element ook een ruwe "region" (fractie 0-1 van breedte/hoogte van de afbeelding) van waar het ongeveer staat — nodig om het element op het beeld te kunnen markeren. Rapporteer je bevindingen via de report_evidence-tool.`;
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -162,10 +175,27 @@ function extractToolInput(apiResponse: unknown): Record<string, unknown> | undef
   return toolUse?.input;
 }
 
-function isValidSuggestion(input: unknown): input is {
+interface RawRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface RawSuggestionElement {
+  checklistItemId: string;
+  visible: boolean;
+  confidence: number;
+  explanation?: string;
+  region?: RawRegion;
+}
+
+interface RawSuggestion {
   scenarioId: string;
-  elements: AiSuggestionElement[];
-} {
+  elements: RawSuggestionElement[];
+}
+
+function isValidSuggestion(input: unknown): input is RawSuggestion {
   if (typeof input !== "object" || input === null) return false;
   const candidate = input as { scenarioId?: unknown; elements?: unknown };
   if (typeof candidate.scenarioId !== "string") return false;
@@ -174,16 +204,38 @@ function isValidSuggestion(input: unknown): input is {
     (el) =>
       typeof el === "object" &&
       el !== null &&
-      typeof (el as AiSuggestionElement).checklistItemId === "string" &&
-      typeof (el as AiSuggestionElement).visible === "boolean" &&
-      typeof (el as AiSuggestionElement).confidence === "number",
+      typeof (el as RawSuggestionElement).checklistItemId === "string" &&
+      typeof (el as RawSuggestionElement).visible === "boolean" &&
+      typeof (el as RawSuggestionElement).confidence === "number",
   );
 }
 
-function needsEscalation(suggestion: {
-  scenarioId: string;
-  elements: AiSuggestionElement[];
-}): boolean {
+/** Rekent de door de AI gerapporteerde fractionele region (0-1) om naar een
+ * pixel-Rect t.o.v. de daadwerkelijke afbeeldingsgrootte (§7.1: AI-vision
+ * levert mogelijk een ruwer gebied dan DOM-matching, maar moet wél iets
+ * leveren zodat het element getekend en meegeteld kan worden). */
+function regionToPixelRect(
+  region: RawRegion | undefined,
+  imageWidth: number,
+  imageHeight: number,
+): Rect | undefined {
+  if (!region) return undefined;
+  return {
+    x: region.x * imageWidth,
+    y: region.y * imageHeight,
+    width: region.width * imageWidth,
+    height: region.height * imageHeight,
+  };
+}
+
+async function getImageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
+  const bitmap = await createImageBitmap(blob);
+  const { width, height } = bitmap;
+  bitmap.close();
+  return { width, height };
+}
+
+function needsEscalation(suggestion: RawSuggestion): boolean {
   const visibleElements = suggestion.elements.filter((e) => e.visible);
   if (visibleElements.length === 0) return false;
   const lowConfidence = visibleElements.some(
@@ -237,7 +289,16 @@ class ClaudeAiVisionProvider implements AiVisionProvider {
       );
     }
 
-    return { scenarioId: input.scenarioId, elements: input.elements, model: usedModel };
+    const { width, height } = await getImageDimensions(screenshot);
+    const elements: AiSuggestionElement[] = input.elements.map((el) => ({
+      checklistItemId: el.checklistItemId,
+      visible: el.visible,
+      confidence: el.confidence,
+      explanation: el.explanation ?? "",
+      roughRegion: regionToPixelRect(el.region, width, height),
+    }));
+
+    return { scenarioId: input.scenarioId, elements, model: usedModel };
   }
 }
 
