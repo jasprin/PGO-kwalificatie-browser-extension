@@ -6,11 +6,15 @@
 
 import type { CaptureEvidenceCommand } from "../shared/messages";
 
-chrome.runtime.onInstalled.addListener(() => {
-  // Side panel opent bij een klik op het extensie-icoon.
-  chrome.sidePanel
-    .setPanelBehavior({ openPanelOnActionClick: true })
-    .catch((error) => console.error("Kon side panel-gedrag niet instellen:", error));
+// Expliciet afgehandeld i.p.v. via chrome.sidePanel.setPanelBehavior() in
+// onInstalled: die instelling wordt maar één keer gezet en bleek onbetrouwbaar
+// bij herhaald herladen van de (unpacked) extensie tijdens ontwikkeling. Een
+// directe onClicked-listener werkt altijd, ongeacht wanneer/hoe vaak de
+// extensie opnieuw geladen is.
+chrome.action.onClicked.addListener(async (tab) => {
+  if (tab.windowId !== undefined) {
+    await chrome.sidePanel.open({ windowId: tab.windowId });
+  }
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
