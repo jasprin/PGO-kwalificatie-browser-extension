@@ -11,7 +11,9 @@ import {
 import { computeDefaultTDate } from "../shared/tDate";
 import { fetchQualificationScriptHtml, parseQualificationScript } from "../sources/wikiParser";
 import type {
+  AiSuggestion,
   ChecklistItem,
+  DomMatchResult,
   Evidence,
   Marking,
   QualificationScript,
@@ -86,7 +88,56 @@ export interface ProposedElement {
 export interface CaptureDraft {
   rawScreenshot: Blob;
   scenarioGuess: Scenario | undefined;
+  /** DOM- en AI-resultaten dekken ALLE scenario's (zie allItems hieronder),
+   * niet alleen het gegokte scenario — bewaard zodat de leverancier het
+   * scenario in de review-stap kan corrigeren zonder opnieuw te hoeven
+   * capturen (zie buildReviewElements, gefixt in issue: scenario wisselen
+   * liet de getoonde verwachte waarden voorheen ongewijzigd). */
+  domMatches: DomMatchResult[];
+  aiSuggestion: AiSuggestion | undefined;
   elements: ProposedElement[];
+}
+
+/** Projecteert de al bekende DOM/AI-resultaten op de checklist van één
+ * specifiek scenario. Puur/synchroon zodat de UI dit ook kan aanroepen
+ * wanneer de leverancier het scenario in de review-stap handmatig wijzigt,
+ * zonder opnieuw te capturen. */
+export function buildReviewElements(
+  scenario: Scenario,
+  domMatches: DomMatchResult[],
+  aiSuggestion: AiSuggestion | undefined,
+): ProposedElement[] {
+  return scenario.checklistItems.map((item) => {
+    const domMatch = domMatches.find((m) => m.checklistItemId === item.id);
+    if (domMatch) {
+      return {
+        checklistItemId: item.id,
+        scenarioId: scenario.id,
+        label: item.label,
+        visible: domMatch.confidence >= AUTO_CONFIRM_CONFIDENCE_THRESHOLD,
+        confidence: domMatch.confidence,
+        source: "dom",
+        rect: domMatch.rect,
+      };
+    }
+    const aiElement = aiSuggestion?.elements.find((e) => e.checklistItemId === item.id);
+    const aiConfidence = aiElement?.confidence ?? 0;
+    return {
+      checklistItemId: item.id,
+      scenarioId: scenario.id,
+      label: item.label,
+      visible:
+        (aiElement?.visible ?? false) && aiConfidence >= AUTO_CONFIRM_CONFIDENCE_THRESHOLD,
+      confidence: aiConfidence,
+      explanation: aiElement?.explanation,
+      visualEvidence: aiElement?.visualEvidence,
+      source: "ai",
+      // Kan ontbreken als de AI geen region opgaf — confirmEvidence valt dan
+      // terug op een plaatshouder-rect (§7.1: AI levert mogelijk een ruwer
+      // gebied, maar het element moet wél getekend/geteld kunnen worden).
+      rect: aiElement?.roughRegion,
+    };
+  });
 }
 
 /** Stap 3 uit de flow (§6): screenshot + hybride herkenning. Levert een
@@ -140,39 +191,9 @@ export async function captureAndSuggest(
   }
 
   const targetScenario = scenarioGuess ?? script.scenarios[0];
-  const elements: ProposedElement[] = targetScenario.checklistItems.map((item) => {
-    const domMatch = domMatches.find((m) => m.checklistItemId === item.id);
-    if (domMatch) {
-      return {
-        checklistItemId: item.id,
-        scenarioId: targetScenario.id,
-        label: item.label,
-        visible: domMatch.confidence >= AUTO_CONFIRM_CONFIDENCE_THRESHOLD,
-        confidence: domMatch.confidence,
-        source: "dom",
-        rect: domMatch.rect,
-      };
-    }
-    const aiElement = aiSuggestion?.elements.find((e) => e.checklistItemId === item.id);
-    const aiConfidence = aiElement?.confidence ?? 0;
-    return {
-      checklistItemId: item.id,
-      scenarioId: targetScenario.id,
-      label: item.label,
-      visible:
-        (aiElement?.visible ?? false) && aiConfidence >= AUTO_CONFIRM_CONFIDENCE_THRESHOLD,
-      confidence: aiConfidence,
-      explanation: aiElement?.explanation,
-      visualEvidence: aiElement?.visualEvidence,
-      source: "ai",
-      // Kan ontbreken als de AI geen region opgaf — confirmEvidence valt dan
-      // terug op een plaatshouder-rect (§7.1: AI levert mogelijk een ruwer
-      // gebied, maar het element moet wél getekend/geteld kunnen worden).
-      rect: aiElement?.roughRegion,
-    };
-  });
+  const elements = buildReviewElements(targetScenario, domMatches, aiSuggestion);
 
-  return { rawScreenshot, scenarioGuess: targetScenario, elements };
+  return { rawScreenshot, scenarioGuess: targetScenario, domMatches, aiSuggestion, elements };
 }
 
 /** Stap 3 (vervolg): de leverancier heeft het voorstel gecontroleerd/

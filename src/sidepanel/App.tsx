@@ -5,6 +5,7 @@ import type { QualificationScript, Scenario, Session } from "../shared/types";
 import { loadActiveSession, saveActiveSession } from "./activeSessionStore";
 import {
   buildAndDownloadReport,
+  buildReviewElements,
   captureAndSuggest,
   confirmEvidence,
   getOverview,
@@ -118,6 +119,20 @@ export function App() {
     return () => chrome.runtime.onMessage.removeListener(onMessage);
   }, [step, script, session]);
 
+  // Fix voor een bug gevonden tijdens live-testen: het wisselen van scenario
+  // in de review-stap veranderde alleen de dropdown, niet de getoonde
+  // verwachte waarden — de leverancier kon dus niet betrouwbaar corrigeren
+  // als de automatische scenario-gok fout was. domMatches/aiSuggestion dekken
+  // altijd alle scenario's (zie captureAndSuggest), dus we kunnen hier zonder
+  // nieuwe capture herprojecteren op het net gekozen scenario.
+  function handleScenarioChange(newScenarioId: string) {
+    setReviewScenarioId(newScenarioId);
+    if (!script || !draft) return;
+    const scenario = script.scenarios.find((s) => s.id === newScenarioId);
+    if (!scenario) return;
+    setReviewElements(buildReviewElements(scenario, draft.domMatches, draft.aiSuggestion));
+  }
+
   function toggleElement(checklistItemId: string) {
     setReviewElements((prev) =>
       prev.map((el) =>
@@ -226,7 +241,7 @@ export function App() {
             Scenario
             <select
               value={reviewScenarioId}
-              onInput={(e) => setReviewScenarioId((e.target as HTMLSelectElement).value)}
+              onInput={(e) => handleScenarioChange((e.target as HTMLSelectElement).value)}
             >
               {script?.scenarios.map((s: Scenario) => (
                 <option value={s.id} key={s.id}>
