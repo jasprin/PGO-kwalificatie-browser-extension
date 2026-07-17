@@ -17,17 +17,66 @@ export interface TextIndexEntry {
   normalized: string;
 }
 
-/** Bouwt een index van zichtbare tekstknopen onder `root` (§8.3). */
+/** Vindt een open modal/dialoog, als die er is (bv. een detailvenster dat
+ * over de rest van de pagina heen ligt). Gevonden tijdens live-testen (§7.1):
+ * de vorige, kale CSS-zichtbaarheidscheck (alleen display:none/
+ * visibility:hidden) telde ook tekst mee die ergens anders op de (lange)
+ * onderliggende paginastructuur staat maar niet in de daadwerkelijk getoonde
+ * modal — dat gaf valse "100% gevonden"-matches voor velden die de gebruiker
+ * helemaal niet op het scherm had. Staat er een modal open, dan is dát de
+ * daadwerkelijke "huidige weergave", niet de hele pagina eronder. */
+function findModalRoot(doc: Document): Element | undefined {
+  const candidates = doc.querySelectorAll<HTMLElement>(
+    'dialog[open], [role="dialog"], [aria-modal="true"]',
+  );
+  let best: HTMLElement | undefined;
+  let bestZIndex = -Infinity;
+  for (const candidate of candidates) {
+    const rect = candidate.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) continue;
+    const zIndex = Number.parseInt(
+      doc.defaultView?.getComputedStyle(candidate).zIndex ?? "0",
+      10,
+    );
+    const effectiveZIndex = Number.isNaN(zIndex) ? 0 : zIndex;
+    if (effectiveZIndex >= bestZIndex) {
+      bestZIndex = effectiveZIndex;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+/** Is dit element daadwerkelijk in beeld — niet alleen "geen display:none",
+ * maar ook een niet-nul grootte binnen de viewport (vangt scrolled-away,
+ * ingeklapte, of off-canvas content op die CSS-technisch wel "zichtbaar" is). */
+function isWithinViewport(element: Element, win: Window): boolean {
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+  if (rect.bottom <= 0 || rect.right <= 0) return false;
+  if (rect.top >= win.innerHeight || rect.left >= win.innerWidth) return false;
+  return true;
+}
+
+/** Bouwt een index van zichtbare tekstknopen. Gebruikt automatisch een open
+ * modal als matchgebied i.p.v. `root` zelf, als die aanwezig is (zie
+ * `findModalRoot`). */
 export function buildTextIndex(root: Element): TextIndexEntry[] {
   const doc = root.ownerDocument ?? document;
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+  const win = doc.defaultView ?? window;
+  const effectiveRoot = findModalRoot(doc) ?? root;
+
+  const walker = doc.createTreeWalker(effectiveRoot, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const text = node.textContent?.trim();
       if (!text) return NodeFilter.FILTER_REJECT;
       const parent = (node as Text).parentElement;
       if (!parent) return NodeFilter.FILTER_REJECT;
-      const style = doc.defaultView?.getComputedStyle(parent);
-      if (style && (style.display === "none" || style.visibility === "hidden")) {
+      const style = win.getComputedStyle(parent);
+      if (style.display === "none" || style.visibility === "hidden") {
+        return NodeFilter.FILTER_REJECT;
+      }
+      if (!isWithinViewport(parent, win)) {
         return NodeFilter.FILTER_REJECT;
       }
       return NodeFilter.FILTER_ACCEPT;
