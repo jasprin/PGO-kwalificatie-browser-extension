@@ -2,7 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import { computeDefaultTDate } from "../shared/tDate";
 import type { CaptureEvidenceCommand } from "../shared/messages";
 import type { QualificationScript, Scenario, Session } from "../shared/types";
-import { loadActiveSession, saveActiveSession } from "./activeSessionStore";
+import { clearActiveSession, loadActiveSession, saveActiveSession } from "./activeSessionStore";
 import {
   buildAndDownloadReport,
   buildReviewElements,
@@ -147,6 +147,23 @@ export function App() {
     setReviewElements(buildReviewElements(scenario, draft.domMatches, draft.aiSuggestion));
   }
 
+  // Wist de onthouden sessie (§7.1-UX) — bv. om per ongeluk de verkeerde
+  // kwalificatiescript-URL kwijt te raken zonder de browser te herstarten.
+  // Alleen de chrome.storage.session-snapshot en de UI-state, niet de al
+  // vastgelegde bewijsstukken/toelichtingen in IndexedDB.
+  async function handleClearSession() {
+    await clearActiveSession();
+    setSession(undefined);
+    setScript(undefined);
+    setScriptUrl("");
+    setTDate(computeDefaultTDate());
+    setDraft(undefined);
+    setReviewElements([]);
+    setReviewScenarioId("");
+    setOverview([]);
+    setStep("start");
+  }
+
   function toggleElement(checklistItemId: string) {
     setReviewElements((prev) =>
       prev.map((el) =>
@@ -245,7 +262,21 @@ export function App() {
       {step === "navigate" && session && script && (
         <div>
           <p>
-            {script.dataserviceName} v{script.version} — T-datum: {session.tDate}
+            {script.dataserviceName} v{script.version} — T-datum: {session.tDate}{" "}
+            <button
+              onClick={handleClearSession}
+              title="Sessie wissen (URL opnieuw invoeren)"
+              aria-label="Sessie wissen"
+              style={{
+                border: "none",
+                background: "none",
+                color: "#b00020",
+                cursor: "pointer",
+                fontWeight: "bold",
+              }}
+            >
+              ✕
+            </button>
           </p>
           <p>Navigeer naar de gewenste pagina in de PGO en klik dan hieronder.</p>
           <button disabled={busy} onClick={handleCapture}>
