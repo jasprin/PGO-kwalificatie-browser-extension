@@ -55,7 +55,7 @@ export interface Rect {
   height: number;
 }
 
-export type MarkingSource = "dom" | "ai";
+export type MarkingSource = "dom" | "ai" | "manual";
 
 /** Eén gevonden/bevestigd data-element op een screenshot. */
 export interface Marking {

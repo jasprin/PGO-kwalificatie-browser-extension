@@ -22,6 +22,20 @@ type Step = "start" | "navigate" | "review" | "overview" | "report-done";
  * (de klassieke rood-groen-kleurenblindheid maakt dat paar onbetrouwbaar), én
  * met een tekstlabel naast het symbool — kleur/symbool alleen is niet genoeg
  * contrast/onderscheid. */
+/** "manual" betekent hier: niet gecontroleerd door DOM- of AI-matching (bv.
+ * omdat de AI-call is overgeslagen, issue #16) — nadrukkelijk anders dan
+ * "ai" met 0%, wat zou lezen als "de AI heeft gekeken en niets gevonden". */
+function sourceLabel(source: ProposedElement["source"]): string {
+  switch (source) {
+    case "dom":
+      return "DOM";
+    case "ai":
+      return "AI";
+    case "manual":
+      return "niet gecontroleerd";
+  }
+}
+
 function StatusBadge({ shown }: { shown: boolean }) {
   const palette = shown
     ? { background: "#dbeafe", color: "#1e3a8a" }
@@ -261,7 +275,11 @@ export function App() {
                   />
                   {el.label}{" "}
                   <em style={{ color: "#666" }}>
-                    ({el.source}, {(el.confidence * 100).toFixed(0)}%)
+                    (
+                    {el.source === "manual"
+                      ? sourceLabel(el.source)
+                      : `${sourceLabel(el.source)}, ${(el.confidence * 100).toFixed(0)}%`}
+                    )
                   </em>
                   {el.explanation && <div style={{ color: "#666" }}>{el.explanation}</div>}
                   {el.visualEvidence && (

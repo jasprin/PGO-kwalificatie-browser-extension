@@ -36,6 +36,13 @@ function generateId(): string {
  * region-equivalent hebben maar toch een laag vertrouwen verdienen. */
 const AUTO_CONFIRM_CONFIDENCE_THRESHOLD = 0.85;
 
+/** Vanaf deze dekking (fractie van de items mét een verwachte waarde in het
+ * gegokte scenario, gevonden met voldoende vertrouwen) heeft DOM-matching
+ * al genoeg gevonden. AI-vision is voor deze pilot-gegevensdienst vooral een
+ * vangnet (PLAN.md §1.5), dus de trage/kostbare AI-call wordt dan overgeslagen
+ * (issue #16). */
+const SKIP_AI_COVERAGE_THRESHOLD = 0.9;
+
 /** Plaatshouder-rect voor bevestigde elementen zonder bekende locatie (bv.
  * een AI-treffer zonder region) — gestapeld in de linkerbovenhoek, zodat het
  * element in elk geval getekend en meegeteld wordt i.p.v. stilzwijgend te
@@ -81,8 +88,45 @@ export interface ProposedElement {
   confidence: number;
   explanation?: string;
   visualEvidence?: string;
-  source: "dom" | "ai";
+  source: "dom" | "ai" | "manual";
   rect?: { x: number; y: number; width: number; height: number };
+}
+
+/** Fractie van de items mét een verwachte waarde in dit scenario die
+ * DOM-matching al met voldoende vertrouwen gevonden heeft — basis voor het
+ * overslaan van de AI-call (issue #16). */
+function domCoverageRatio(scenario: Scenario, domMatches: DomMatchResult[]): number {
+  const itemsWithExpectedValue = scenario.checklistItems.filter((i) => i.expectedValue);
+  if (itemsWithExpectedValue.length === 0) return 0;
+  const domMatchById = new Map(domMatches.map((m) => [m.checklistItemId, m]));
+  const covered = itemsWithExpectedValue.filter((item) => {
+    const match = domMatchById.get(item.id);
+    return match !== undefined && match.confidence >= AUTO_CONFIRM_CONFIDENCE_THRESHOLD;
+  }).length;
+  return covered / itemsWithExpectedValue.length;
+}
+
+/** Bepaalt welke scenario's als context naar AI-vision gestuurd worden.
+ * Alleen het gegokte scenario, tenzij die gok twijfelachtig is (geen
+ * DOM-hits, of meerdere scenario's met een gelijk aantal hits) — dan blijft
+ * alles meegestuurd zodat de AI ook kan helpen het scenario te bepalen.
+ * Voorheen ging altijd de volledige lijst van alle scenario's mee (issue
+ * #16), wat zowel de kosten/tijd per call als — minder voor de hand liggend —
+ * de escalatieladder in aiVisionProvider.ts nadelig beïnvloedde: de
+ * "gevonden ratio" die daar bepaalt of tier 2 nodig is, werd kunstmatig
+ * verdund doordat die ooit over alle 92 items van 3 scenario's ging i.p.v.
+ * over alleen de ~30 items die voor het huidige scherm relevant konden zijn. */
+function pickAiContextScenarios(
+  script: QualificationScript,
+  hitsPerScenario: Map<string, number>,
+  scenarioGuess: Scenario | undefined,
+): Scenario[] {
+  if (!scenarioGuess) return script.scenarios;
+  const guessHits = hitsPerScenario.get(scenarioGuess.id) ?? 0;
+  const isClearWinner = [...hitsPerScenario.entries()].every(
+    ([id, hits]) => id === scenarioGuess.id || hits < guessHits,
+  );
+  return isClearWinner ? [scenarioGuess] : script.scenarios;
 }
 
 export interface CaptureDraft {
@@ -131,7 +175,11 @@ export function buildReviewElements(
       confidence: aiConfidence,
       explanation: aiElement?.explanation,
       visualEvidence: aiElement?.visualEvidence,
-      source: "ai",
+      // "manual" i.p.v. "ai" wanneer er geen AI-suggestie beschikbaar is
+      // (overgeslagen, issue #16, of de call is mislukt) — anders zou
+      // "0%" ten onrechte lezen als "de AI heeft gekeken en niets gevonden"
+      // i.p.v. "niemand heeft dit gecontroleerd, beoordeel zelf".
+      source: aiSuggestion ? "ai" : "manual",
       // Kan ontbreken als de AI geen region opgaf — confirmEvidence valt dan
       // terug op een plaatshouder-rect (§7.1: AI levert mogelijk een ruwer
       // gebied, maar het element moet wél getekend/geteld kunnen worden).
@@ -175,15 +223,29 @@ export async function captureAndSuggest(
     (s) => s.id === [...hitsPerScenario.entries()].sort((a, b) => b[1] - a[1])[0]?.[0],
   );
 
-  let aiSuggestion;
-  try {
-    aiSuggestion = await aiVisionProvider.suggestEvidence(rawScreenshot, {
-      knownScenarios: script.scenarios,
-      alreadyFoundChecklistItemIds: [...domMatchIds],
-    });
-  } catch {
-    // Degradatie naar kaal DOM-resultaat (§8.9) — geen AI-voorstel beschikbaar.
-    aiSuggestion = undefined;
+  // Performance (issue #16): AI-vision is voor deze pilot-gegevensdienst
+  // vooral een vangnet (PLAN.md §1.5) — sla de trage/kostbare AI-call over
+  // zodra DOM-matching het gegokte scenario al vrijwel volledig en met
+  // voldoende vertrouwen gevonden heeft.
+  const shouldSkipAi =
+    scenarioGuess !== undefined &&
+    domCoverageRatio(scenarioGuess, domMatches) >= SKIP_AI_COVERAGE_THRESHOLD;
+
+  let aiSuggestion: AiSuggestion | undefined;
+  if (!shouldSkipAi) {
+    try {
+      aiSuggestion = await aiVisionProvider.suggestEvidence(rawScreenshot, {
+        // Alleen het (voldoende duidelijk) gegokte scenario meesturen i.p.v.
+        // altijd alle scenario's — scheelt promptgrootte, kosten en tijd
+        // (issue #16). Bij een twijfelachtige of ontbrekende gok blijft
+        // alles meegaan, zodat de AI ook kan helpen het scenario te bepalen.
+        knownScenarios: pickAiContextScenarios(script, hitsPerScenario, scenarioGuess),
+        alreadyFoundChecklistItemIds: [...domMatchIds],
+      });
+    } catch {
+      // Degradatie naar kaal DOM-resultaat (§8.9) — geen AI-voorstel beschikbaar.
+      aiSuggestion = undefined;
+    }
   }
 
   if (!scenarioGuess && aiSuggestion) {
