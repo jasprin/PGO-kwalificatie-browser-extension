@@ -63,9 +63,12 @@ function buildScenarioSection(
         : annotation
           ? `Ontbrekend — toelichting: ${escapeHtml(annotation)}`
           : "Ontbrekend";
+      const labelText = item.bundleLabel
+        ? `${escapeHtml(item.label)} <span style="color:#666">(${escapeHtml(item.bundleLabel)})</span>`
+        : escapeHtml(item.label);
       return `<tr id="item-${item.id}">
         <td>${item.order}</td>
-        <td>${escapeHtml(item.label)}</td>
+        <td>${labelText}</td>
         <td>${statusText}</td>
       </tr>`;
     })

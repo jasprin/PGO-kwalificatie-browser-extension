@@ -43,4 +43,28 @@ const productCode = s1.checklistItems.find((i) => i.label === "Product code");
 assert(productCode?.expectedValue?.kind === "code", "kind product code");
 assert(productCode?.expectedValue?.codeSystem === "SNOMED CT", "codeSystem product code");
 
+// Issue #28: scenario 1 bevat twee vaccinatie-bundels — zonder onderscheid
+// zouden "Product code"/"Batchnummer"/etc. tweemaal identiek gelabeld zijn,
+// zonder dat te zien is welke vaccinatie ontbreekt.
+const productCodes = s1.checklistItems.filter((i) => i.label === "Product code");
+assert(
+  productCodes.length === 3,
+  `verwacht 3 'Product code'-items in scenario 1 (1 in de eerste vaccinatie, 2 in de tweede), kreeg ${productCodes.length}`,
+);
+assert(
+  productCodes.every((i) => i.bundleLabel),
+  "alle 'Product code'-items hebben een bundleLabel",
+);
+const distinctBundleLabels = new Set(productCodes.map((i) => i.bundleLabel));
+assert(
+  distinctBundleLabels.size === 2,
+  `de 'Product code'-items moeten over precies 2 verschillende bundels verdeeld zijn (kreeg: ${[...distinctBundleLabels].join(", ")})`,
+);
+
+const achternaam = s1.checklistItems.find((i) => i.label === "Achternaam");
+assert(
+  achternaam?.bundleLabel === undefined,
+  "een item uit een bundel die maar één keer voorkomt (Patient) krijgt geen bundleLabel",
+);
+
 console.log("Alle assertions geslaagd.");

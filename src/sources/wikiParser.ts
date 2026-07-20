@@ -156,9 +156,33 @@ function parseTestdataSection(doc: Document, anchorId: string): ChecklistItem[] 
     );
   }
 
+  // Issue #28: een scenario kan meerdere gelijksoortige bundels bevatten
+  // (bv. twee vaccinaties in één scenario) — elke bundel is een eigen
+  // wikitable met als allereerste rij één gekleurde kopcel (bv. "Bundel" of
+  // "Vaccinatie"). Zonder onderscheid krijgen items uit verschillende
+  // bundels identieke labels ("Product code" komt dan tweemaal voor, zonder
+  // dat de leverancier kan zien welke vaccinatie ontbreekt). Alleen een
+  // ordinal toevoegen wanneer een koptekst daadwerkelijk vaker dan één keer
+  // voorkomt in dit scenario — bij een enkel voorkomen ("Bundel") is er
+  // niets te onderscheiden.
+  const tableHeadings = tables.map(tableGroupHeading);
+  const headingTotals = new Map<string, number>();
+  for (const heading of tableHeadings) {
+    if (heading) headingTotals.set(heading, (headingTotals.get(heading) ?? 0) + 1);
+  }
+  const headingSeenSoFar = new Map<string, number>();
+
   const items: ChecklistItem[] = [];
   let order = 0;
-  for (const table of tables) {
+  tables.forEach((table, tableIndex) => {
+    const heading = tableHeadings[tableIndex];
+    let bundleLabel: string | undefined;
+    if (heading && (headingTotals.get(heading) ?? 0) > 1) {
+      const seen = (headingSeenSoFar.get(heading) ?? 0) + 1;
+      headingSeenSoFar.set(heading, seen);
+      bundleLabel = `${heading} ${seen}`;
+    }
+
     for (const row of Array.from(table.querySelectorAll("tr"))) {
       const nonEmpty = cellTexts(row).filter((t) => t.length > 0);
       if (nonEmpty.length !== 2) continue; // groepskop, spacer, of iets anders
@@ -175,9 +199,21 @@ function parseTestdataSection(doc: Document, anchorId: string): ChecklistItem[] 
         scenarioId: "", // wordt per scenario ingevuld door de aanroeper
         order,
         label,
+        bundleLabel,
         expectedValue: buildTestValue(value, label),
       });
     }
-  }
+  });
   return items;
+}
+
+/** Leest de enkele gekleurde kopcel bovenaan een bundel-wikitable (bv.
+ * "Bundel", "Vaccinatie") — `undefined` bij een onverwachte structuur, dan
+ * blijft disambiguatie gewoon achterwege i.p.v. te falen (§28: dit is een
+ * bruikbaarheidsverbetering, geen vereiste voor matching). */
+function tableGroupHeading(table: Element): string | undefined {
+  const firstRow = table.querySelector("tr");
+  if (!firstRow) return undefined;
+  const texts = cellTexts(firstRow).filter((t) => t.length > 0);
+  return texts.length === 1 ? texts[0] : undefined;
 }

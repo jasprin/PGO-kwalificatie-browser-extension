@@ -84,6 +84,10 @@ export interface ProposedElement {
   checklistItemId: string;
   scenarioId: string;
   label: string;
+  /** Onderscheidt herhaalde items uit meerdere gelijksoortige bundels binnen
+   * één scenario (bv. "Vaccinatie 1"/"Vaccinatie 2"), zie ChecklistItem
+   * (issue #28). */
+  bundleLabel?: string;
   visible: boolean;
   confidence: number;
   explanation?: string;
@@ -163,6 +167,7 @@ export function buildReviewElements(
         checklistItemId: item.id,
         scenarioId: scenario.id,
         label: item.label,
+        bundleLabel: item.bundleLabel,
         visible: domMatch.confidence >= AUTO_CONFIRM_CONFIDENCE_THRESHOLD,
         confidence: domMatch.confidence,
         source: "dom",
@@ -175,6 +180,7 @@ export function buildReviewElements(
       checklistItemId: item.id,
       scenarioId: scenario.id,
       label: item.label,
+      bundleLabel: item.bundleLabel,
       visible:
         (aiElement?.visible ?? false) && aiConfidence >= AUTO_CONFIRM_CONFIDENCE_THRESHOLD,
       confidence: aiConfidence,

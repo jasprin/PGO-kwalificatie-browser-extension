@@ -31,6 +31,12 @@ export interface ChecklistItem {
   expectedValue?: TestValue;
   /** FHIR-pad ter documentatie (niet gebruikt voor matching, zie §1.6). */
   fhirPath?: string;
+  /** Onderscheidt herhaalde items binnen één scenario die uit meerdere
+   * gelijksoortige bundels komen (bv. twee vaccinaties), zoals "Vaccinatie 1"
+   * / "Vaccinatie 2" (issue #28). Alleen gezet wanneer er daadwerkelijk
+   * meerdere bundels van hetzelfde type in het scenario voorkomen — bij een
+   * enkel voorkomen is er niets te onderscheiden. */
+  bundleLabel?: string;
 }
 
 export interface Scenario {

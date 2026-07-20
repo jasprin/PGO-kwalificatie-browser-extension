@@ -152,6 +152,13 @@ export function App() {
   // Alleen de chrome.storage.session-snapshot en de UI-state, niet de al
   // vastgelegde bewijsstukken/toelichtingen in IndexedDB.
   async function handleClearSession() {
+    // Issue #30: een los rood kruisje oogde als foutindicator en kon zonder
+    // bevestiging per ongeluk aangeklikt worden — nu een expliciete vraag,
+    // want de kwalificatiescript-URL/T-datum moeten anders opnieuw ingevoerd
+    // worden (het al vastgelegde bewijs in IndexedDB blijft hoe dan ook intact).
+    if (!window.confirm("Sessie wissen? Je moet de kwalificatiescript-URL opnieuw invoeren.")) {
+      return;
+    }
     await clearActiveSession();
     setSession(undefined);
     setScript(undefined);
@@ -266,16 +273,16 @@ export function App() {
             <button
               onClick={handleClearSession}
               title="Sessie wissen (URL opnieuw invoeren)"
-              aria-label="Sessie wissen"
               style={{
                 border: "none",
                 background: "none",
                 color: "#b00020",
                 cursor: "pointer",
                 fontWeight: "bold",
+                fontSize: "12px",
               }}
             >
-              ✕
+              ✕ Sessie wissen
             </button>
           </p>
           <p>Navigeer naar de gewenste pagina in de PGO en klik dan hieronder.</p>
@@ -317,7 +324,10 @@ export function App() {
                     checked={el.visible}
                     onChange={() => toggleElement(el.checklistItemId)}
                   />
-                  {el.label}{" "}
+                  {el.label}
+                  {el.bundleLabel && (
+                    <span style={{ color: "#666" }}> ({el.bundleLabel})</span>
+                  )}{" "}
                   <em style={{ color: "#666" }}>
                     (
                     {el.source === "manual"
@@ -345,23 +355,47 @@ export function App() {
         <div>
           {script?.scenarios.map((scenario) => (
             <div key={scenario.id}>
-              <h2 style={{ fontSize: "14px" }}>
+              {/* Sticky (issue #29): bij lange lijsten (tot 56 items in één
+                  scenario) verdween de scenario-context anders al na een
+                  paar regels scrollen uit beeld. */}
+              <h2
+                style={{
+                  fontSize: "14px",
+                  position: "sticky",
+                  top: 0,
+                  background: "white",
+                  padding: "0.2rem 0",
+                  margin: 0,
+                }}
+              >
                 Scenario {scenario.number}: {scenario.title}
               </h2>
               <ul style={{ listStyle: "none", padding: 0 }}>
                 {overview
                   .filter((row) => row.scenario.id === scenario.id)
                   .map((row) => (
-                    <li key={row.item.id} style={{ marginBottom: "0.3rem" }}>
-                      <StatusBadge shown={row.shown} /> {row.item.label}
+                    <li key={row.item.id} style={{ marginBottom: "0.5rem" }}>
+                      {/* Blok-elementen i.p.v. inline (issue #31): anders
+                          liep het toelichting-veld afhankelijk van de
+                          labellengte soms wel, soms niet door naar een
+                          nieuwe regel. */}
+                      <div>
+                        <StatusBadge shown={row.shown} /> {row.item.label}
+                        {row.item.bundleLabel && (
+                          <span style={{ color: "#666" }}> ({row.item.bundleLabel})</span>
+                        )}
+                      </div>
                       {!row.shown && (
-                        <input
-                          placeholder="Toelichting (optioneel)"
-                          value={row.annotation ?? ""}
-                          onChange={(e) =>
-                            handleAnnotationChange(row, (e.target as HTMLInputElement).value)
-                          }
-                        />
+                        <div>
+                          <input
+                            style={{ width: "100%" }}
+                            placeholder="Toelichting (optioneel)"
+                            value={row.annotation ?? ""}
+                            onChange={(e) =>
+                              handleAnnotationChange(row, (e.target as HTMLInputElement).value)
+                            }
+                          />
+                        </div>
                       )}
                     </li>
                   ))}
