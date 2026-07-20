@@ -3,19 +3,35 @@ import { useEffect, useState } from "preact/hooks";
 import { settingsRepository } from "../storage/repositories";
 
 function OptionsApp() {
+  // Bewust NOOIT de daadwerkelijke opgeslagen key terug in dit veld laden
+  // (security-review-bevinding, issue #27): dat zou de key onnodig lang in
+  // JS-geheugen/DOM houden bij elk bezoek aan deze pagina. In plaats daarvan
+  // alleen bijhouden of er al een key is (voor de placeholder/verwijderknop),
+  // en het veld leeg laten tot de gebruiker zelf iets nieuws invoert.
   const [apiKey, setApiKey] = useState("");
+  const [hasStoredKey, setHasStoredKey] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     settingsRepository.getApiKey().then((key) => {
-      if (key) setApiKey(key);
+      setHasStoredKey(Boolean(key));
     });
   }, []);
 
   async function handleSave() {
-    await settingsRepository.setApiKey(apiKey.trim());
+    const trimmed = apiKey.trim();
+    if (!trimmed) return;
+    await settingsRepository.setApiKey(trimmed);
+    setApiKey("");
+    setHasStoredKey(true);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  }
+
+  async function handleClear() {
+    await settingsRepository.clearApiKey();
+    setApiKey("");
+    setHasStoredKey(false);
   }
 
   return (
@@ -33,9 +49,22 @@ function OptionsApp() {
           style={{ width: "100%" }}
           value={apiKey}
           onInput={(e) => setApiKey((e.target as HTMLInputElement).value)}
+          placeholder={
+            hasStoredKey ? "•••••••• (ingesteld — laat leeg om te behouden)" : "sk-ant-..."
+          }
         />
       </label>
-      <button onClick={handleSave}>Opslaan</button>
+      <button onClick={handleSave} disabled={!apiKey.trim()}>
+        Opslaan
+      </button>
+      {hasStoredKey && (
+        <button
+          onClick={handleClear}
+          style={{ marginLeft: "0.5rem", color: "#b00020" }}
+        >
+          Verwijderen
+        </button>
+      )}
       {saved && <span style={{ marginLeft: "0.5rem", color: "green" }}>Opgeslagen.</span>}
     </div>
   );

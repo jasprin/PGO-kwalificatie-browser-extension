@@ -30,6 +30,7 @@ export interface SessionEvidenceStore {
 export interface SettingsRepository {
   getApiKey(): Promise<string | undefined>;
   setApiKey(key: string): Promise<void>;
+  clearApiKey(): Promise<void>;
 }
 
 class IndexedDbAnnotationRepository implements AnnotationRepository {
@@ -123,6 +124,11 @@ class IndexedDbSettingsRepository implements SettingsRepository {
   async setApiKey(key: string): Promise<void> {
     const db = await getDb();
     await db.put("settings", key, API_KEY_STORAGE_KEY);
+  }
+
+  async clearApiKey(): Promise<void> {
+    const db = await getDb();
+    await db.delete("settings", API_KEY_STORAGE_KEY);
   }
 }
 
