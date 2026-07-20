@@ -25,6 +25,11 @@ export class AiVisionUnavailableError extends Error {}
  * verwezen worden i.p.v. blind te retryen. */
 export class AiVisionAuthError extends AiVisionUnavailableError {}
 
+/** Overige 4xx-fouten (issue #25): het verzoek zelf is ongeldig (bv. een
+ * verkeerd modelnaam of schema), dat verandert niet door het nog eens te
+ * proberen — in tegenstelling tot een tijdelijke netwerk-/5xx-fout. */
+export class AiVisionClientError extends AiVisionUnavailableError {}
+
 // Foutafhandeling voor de Claude-aanroep (issue #13, "minimale, niet-
 // overengineerde foutafhandeling"): een enkele hapering (netwerkblip,
 // tijdelijke 5xx, timeout) mag niet meteen de hele AI-vangnet-laag laten
@@ -214,6 +219,14 @@ async function callClaude(
         );
       }
 
+      if (response.status >= 400 && response.status < 500) {
+        // Niet retrybaar: een 4xx betekent dat het verzoek zelf ongeldig is
+        // (bv. een fout schema of modelnaam) — dat lost herhalen niet op.
+        throw new AiVisionClientError(
+          `Claude API-aanroep mislukt (HTTP ${response.status}) — verzoek is ongeldig.`,
+        );
+      }
+
       if (!response.ok) {
         throw new AiVisionUnavailableError(
           `Claude API-aanroep mislukt (HTTP ${response.status})`,
@@ -222,7 +235,9 @@ async function callClaude(
 
       return await response.json();
     } catch (error) {
-      if (error instanceof AiVisionAuthError) throw error;
+      if (error instanceof AiVisionAuthError || error instanceof AiVisionClientError) {
+        throw error;
+      }
       lastError = error;
       if (attempt < MAX_CLAUDE_ATTEMPTS) {
         await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
