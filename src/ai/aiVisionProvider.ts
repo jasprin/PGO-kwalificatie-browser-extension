@@ -19,6 +19,24 @@ export interface AiVisionProvider {
 
 export class AiVisionUnavailableError extends Error {}
 
+/** Aparte subklasse voor een (vermoedelijk) ongeldige/geweigerde API-key
+ * (issue #13) — in tegenstelling tot een tijdelijke netwerk-/serverfout heeft
+ * opnieuw proberen hier geen zin, en de gebruiker moet naar de opties-pagina
+ * verwezen worden i.p.v. blind te retryen. */
+export class AiVisionAuthError extends AiVisionUnavailableError {}
+
+// Foutafhandeling voor de Claude-aanroep (issue #13, "minimale, niet-
+// overengineerde foutafhandeling"): een enkele hapering (netwerkblip,
+// tijdelijke 5xx, timeout) mag niet meteen de hele AI-vangnet-laag laten
+// afvallen. Een ongeldige key of een andere 4xx-fout is niet retrybaar.
+const MAX_CLAUDE_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 500;
+const REQUEST_TIMEOUT_MS = 20_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Escalatieladder (besloten, geen vast model): goedkoop/snel als standaard,
 // opschalen naar een sterker model bij weinig DOM-matches, laag
 // zelf-vertrouwen, of een antwoord dat niet aan het schema voldoet.
@@ -148,47 +166,77 @@ async function callClaude(
     s.checklistItems.map((i) => i.id),
   );
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      // Vereist voor een rechtstreekse browseraanroep (§8.4) — bewust
-      // geaccepteerd risico voor deze single-user PoC met fictieve testdata.
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 2048,
-      tools: [buildTool(checklistItemIds)],
-      tool_choice: { type: "tool", name: TOOL_NAME },
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: "image/png",
-                data: screenshotBase64,
-              },
-            },
-            { type: "text", text: buildPrompt(context) },
-          ],
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_CLAUDE_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          // Vereist voor een rechtstreekse browseraanroep (§8.4) — bewust
+          // geaccepteerd risico voor deze single-user PoC met fictieve testdata.
+          "anthropic-dangerous-direct-browser-access": "true",
         },
-      ],
-    }),
-  });
+        body: JSON.stringify({
+          model,
+          max_tokens: 2048,
+          tools: [buildTool(checklistItemIds)],
+          tool_choice: { type: "tool", name: TOOL_NAME },
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: "image/png",
+                    data: screenshotBase64,
+                  },
+                },
+                { type: "text", text: buildPrompt(context) },
+              ],
+            },
+          ],
+        }),
+      });
 
-  if (!response.ok) {
-    throw new AiVisionUnavailableError(
-      `Claude API-aanroep mislukt (HTTP ${response.status})`,
-    );
+      if (response.status === 401 || response.status === 403) {
+        // Niet retrybaar: een verkeerde key wordt niet goed door het nog een
+        // keer te proberen.
+        throw new AiVisionAuthError(
+          `Claude API-key geweigerd (HTTP ${response.status}). Controleer de key via de opties-pagina.`,
+        );
+      }
+
+      if (!response.ok) {
+        throw new AiVisionUnavailableError(
+          `Claude API-aanroep mislukt (HTTP ${response.status})`,
+        );
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof AiVisionAuthError) throw error;
+      lastError = error;
+      if (attempt < MAX_CLAUDE_ATTEMPTS) {
+        await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+        continue;
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
-  return response.json();
+  const reason = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new AiVisionUnavailableError(
+    `Claude API niet bereikbaar na ${MAX_CLAUDE_ATTEMPTS} pogingen: ${reason}`,
+  );
 }
 
 function extractToolInput(apiResponse: unknown): Record<string, unknown> | undefined {

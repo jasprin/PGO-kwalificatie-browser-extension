@@ -290,6 +290,11 @@ export function App() {
 
       {step === "review" && draft && (
         <div>
+          {draft.aiWarning && (
+            <p style={{ color: "#9a3412", background: "#ffedd5", padding: "0.4rem", borderRadius: "4px" }}>
+              ⚠ {draft.aiWarning}
+            </p>
+          )}
           <label>
             Scenario
             <select

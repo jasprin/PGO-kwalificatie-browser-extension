@@ -139,6 +139,11 @@ export interface CaptureDraft {
    * liet de getoonde verwachte waarden voorheen ongewijzigd). */
   domMatches: DomMatchResult[];
   aiSuggestion: AiSuggestion | undefined;
+  /** Niet-blokkerende waarschuwing als AI-vision niet beschikbaar was (issue
+   * #13, bv. ongeldige API-key of Claude API onbereikbaar na retries) — de
+   * capture gaat door met alleen het DOM-resultaat, maar de leverancier moet
+   * weten dat de herkenning daardoor minder compleet kan zijn. */
+  aiWarning?: string;
   elements: ProposedElement[];
 }
 
@@ -243,6 +248,7 @@ export async function captureAndSuggest(
     domCoverageRatio(scenarioGuess, domMatches) >= SKIP_AI_COVERAGE_THRESHOLD;
 
   let aiSuggestion: AiSuggestion | undefined;
+  let aiWarning: string | undefined;
   if (!shouldSkipAi) {
     try {
       aiSuggestion = await aiVisionProvider.suggestEvidence(rawScreenshot, {
@@ -253,9 +259,16 @@ export async function captureAndSuggest(
         knownScenarios: pickAiContextScenarios(script, scoresPerScenario, scenarioGuess),
         alreadyFoundChecklistItemIds: [...domMatchIds],
       });
-    } catch {
-      // Degradatie naar kaal DOM-resultaat (§8.9) — geen AI-voorstel beschikbaar.
+    } catch (error) {
+      // Degradatie naar kaal DOM-resultaat (§8.9): de capture gaat door,
+      // maar de leverancier moet dit kunnen zien i.p.v. dat de AI-uitval
+      // stilzwijgend verdwijnt (issue #13, aiVisionProvider.ts regelt zelf al
+      // retry-met-backoff voor tijdelijke fouten vóórdat dit hier belandt).
       aiSuggestion = undefined;
+      aiWarning =
+        error instanceof Error
+          ? `AI-analyse niet beschikbaar, doorgegaan met alleen DOM-matching: ${error.message}`
+          : "AI-analyse niet beschikbaar, doorgegaan met alleen DOM-matching.";
     }
   }
 
@@ -266,7 +279,14 @@ export async function captureAndSuggest(
   const targetScenario = scenarioGuess ?? script.scenarios[0];
   const elements = buildReviewElements(targetScenario, domMatches, aiSuggestion);
 
-  return { rawScreenshot, scenarioGuess: targetScenario, domMatches, aiSuggestion, elements };
+  return {
+    rawScreenshot,
+    scenarioGuess: targetScenario,
+    domMatches,
+    aiSuggestion,
+    aiWarning,
+    elements,
+  };
 }
 
 /** Stap 3 (vervolg): de leverancier heeft het voorstel gecontroleerd/
