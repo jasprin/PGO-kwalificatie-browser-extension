@@ -143,10 +143,45 @@ export interface MatchResult {
   confidence: number;
 }
 
+/** Kandidaten korter dan dit worden niet als kale substring geaccepteerd
+ * (issue #19) — een fragment van 2-3 tekens (bv. een ISO-landcode) komt op
+ * een contentrijke pagina zo vaak toevallig voor dat het geen betekenisvol
+ * signaal is. Zulke korte kandidaten moeten in plaats daarvan op een
+ * woordgrens matchen (zie matchesAsWord). */
+const MIN_SUBSTRING_CANDIDATE_LENGTH = 4;
+
+/** Ondergrens voor de averechtse matchrichting (issue #20): "de kandidaat
+ * bevat deze paginatekst" mag alleen tellen als die paginatekst zelf al
+ * substantieel is — anders "bevestigt" een kort, generiek stukje paginatekst
+ * (bv. een knoplabel) toevallig elke langere kandidaat waar het in voorkomt. */
+const MIN_REVERSE_MATCH_ENTRY_LENGTH = 6;
+
+/** Confidence voor een match die alleen via een generieke representatie
+ * (zie Candidate.specific) tot stand kwam — laag genoeg om onder
+ * AUTO_CONFIRM_CONFIDENCE_THRESHOLD (sessionController.ts) te blijven, zodat
+ * zo'n element wél getoond maar niet automatisch aangevinkt wordt. */
+const GENERIC_MATCH_CONFIDENCE = 0.6;
+
+function matchesAsWord(haystack: string, word: string): boolean {
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`).test(haystack);
+}
+
+interface Candidate {
+  text: string;
+  /** false voor een generieke representatie die niets patiënt-/scenario-
+   * specifieks bewijst — met name de weergavetekst (bv. productnaam) van een
+   * coded value, die voor élke patiënt met hetzelfde product gelijk is
+   * (issue #21). Bij andere kinds is displayText juist wél de specifieke
+   * waarde zelf (zie buildTestValue). */
+  specific: boolean;
+}
+
 /**
  * Zoekt de beste match voor één testwaarde in de index. Oplopend:
  * 1. genormaliseerde exacte (sub)string-match
- * 2. voor coded values: code óf weergavetekst accepteren
+ * 2. voor coded values: code óf weergavetekst accepteren (weergavetekst
+ *    telt als generiek, zie Candidate.specific)
  * 3. voor datums: T-offset omrekenen naar een absolute datum en een paar
  *    gangbare notaties proberen
  * 4. tolerante (Levenshtein-)afstand als vangnet
@@ -156,17 +191,30 @@ export function matchTestValue(
   value: TestValue,
   tDate: string,
 ): MatchResult | undefined {
-  const candidates = new Set<string>();
-  candidates.add(value.normalized);
-  if (value.displayText) candidates.add(normalizeText(value.displayText));
-  if (value.kind === "code" && value.code) candidates.add(normalizeText(value.code));
+  // Specifieke kandidaten eerst: als voor dezelfde pagina-tekst zowel een
+  // specifieke als een generieke representatie zou matchen, wint de
+  // specifieke (confidence 1) omdat de binnenste lus per entry stopt bij de
+  // eerste treffer. Let op: bij kind "code" is value.normalized zelf al
+  // afgeleid van de generieke weergavetekst (zie buildTestValue), dus die
+  // telt dan óók als generiek — alleen de code zelf is dan specifiek.
+  const candidates: Candidate[] = [];
+  if (value.kind === "code" && value.code) {
+    candidates.push({ text: normalizeText(value.code), specific: true });
+  }
+  candidates.push({ text: value.normalized, specific: value.kind !== "code" });
   if (value.kind === "date" && value.tOffset) {
     const resolved = resolveTOffset(value.tOffset, tDate);
     if (resolved) {
-      for (const candidate of candidateDateStrings(resolved)) {
-        candidates.add(candidate);
+      for (const text of candidateDateStrings(resolved)) {
+        candidates.push({ text, specific: true });
       }
     }
+  }
+  if (value.displayText) {
+    candidates.push({
+      text: normalizeText(value.displayText),
+      specific: value.kind !== "code",
+    });
   }
 
   // 1-3: exacte (sub)string-match tegen alle kandidaat-representaties, in
@@ -175,12 +223,22 @@ export function matchTestValue(
   for (const entry of index) {
     if (!entry.normalized) continue;
     for (const candidate of candidates) {
-      if (candidate.length < 2) continue;
-      if (
-        entry.normalized.includes(candidate) ||
-        candidate.includes(entry.normalized)
-      ) {
-        return { element: entry.element, confidence: 1 };
+      const text = candidate.text;
+      if (text.length < 2) continue;
+
+      const forwardMatch =
+        text.length >= MIN_SUBSTRING_CANDIDATE_LENGTH
+          ? entry.normalized.includes(text)
+          : matchesAsWord(entry.normalized, text);
+      const reverseMatch =
+        entry.normalized.length >= MIN_REVERSE_MATCH_ENTRY_LENGTH &&
+        text.includes(entry.normalized);
+
+      if (forwardMatch || reverseMatch) {
+        return {
+          element: entry.element,
+          confidence: candidate.specific ? 1 : GENERIC_MATCH_CONFIDENCE,
+        };
       }
     }
   }
@@ -189,15 +247,18 @@ export function matchTestValue(
   // betekenisvolle woorden (>2 tekens) van de waarde in de entry voorkomt —
   // vangt parafrases/afkortingen op die (nog) niet als losse substring matchen.
   for (const candidate of candidates) {
-    const tokens = candidate.split(" ").filter((t) => t.length > 2);
+    const tokens = candidate.text.split(" ").filter((t) => t.length > 2);
     if (tokens.length < 2) continue;
     for (const entry of index) {
       if (!entry.normalized) continue;
       const matchedTokens = tokens.filter((t) => entry.normalized.includes(t));
-      if (matchedTokens.length / tokens.length >= 0.7) {
+      const tokenRatio = matchedTokens.length / tokens.length;
+      if (tokenRatio >= 0.7) {
         return {
           element: entry.element,
-          confidence: matchedTokens.length / tokens.length,
+          confidence: candidate.specific
+            ? tokenRatio
+            : Math.min(tokenRatio, GENERIC_MATCH_CONFIDENCE),
         };
       }
     }
