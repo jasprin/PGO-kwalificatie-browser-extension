@@ -108,7 +108,7 @@ function domCoverageRatio(scenario: Scenario, domMatches: DomMatchResult[]): num
 
 /** Bepaalt welke scenario's als context naar AI-vision gestuurd worden.
  * Alleen het gegokte scenario, tenzij die gok twijfelachtig is (geen
- * DOM-hits, of meerdere scenario's met een gelijk aantal hits) — dan blijft
+ * DOM-hits, of meerdere scenario's met een vergelijkbare score) — dan blijft
  * alles meegestuurd zodat de AI ook kan helpen het scenario te bepalen.
  * Voorheen ging altijd de volledige lijst van alle scenario's mee (issue
  * #16), wat zowel de kosten/tijd per call als — minder voor de hand liggend —
@@ -118,13 +118,13 @@ function domCoverageRatio(scenario: Scenario, domMatches: DomMatchResult[]): num
  * over alleen de ~30 items die voor het huidige scherm relevant konden zijn. */
 function pickAiContextScenarios(
   script: QualificationScript,
-  hitsPerScenario: Map<string, number>,
+  scoresPerScenario: Map<string, number>,
   scenarioGuess: Scenario | undefined,
 ): Scenario[] {
   if (!scenarioGuess) return script.scenarios;
-  const guessHits = hitsPerScenario.get(scenarioGuess.id) ?? 0;
-  const isClearWinner = [...hitsPerScenario.entries()].every(
-    ([id, hits]) => id === scenarioGuess.id || hits < guessHits,
+  const guessScore = scoresPerScenario.get(scenarioGuess.id) ?? 0;
+  const isClearWinner = [...scoresPerScenario.entries()].every(
+    ([id, score]) => id === scenarioGuess.id || score < guessScore,
   );
   return isClearWinner ? [scenarioGuess] : script.scenarios;
 }
@@ -212,15 +212,26 @@ export async function captureAndSuggest(
 
   const domMatches = domResponse?.matches ?? [];
   const domMatchIds = new Set(domMatches.map((m) => m.checklistItemId));
+  const domMatchById = new Map(domMatches.map((m) => [m.checklistItemId, m]));
 
-  // Scenario-gok: het scenario met de meeste DOM-treffers.
-  const hitsPerScenario = new Map<string, number>();
+  // Scenario-gok: het scenario met de hoogste opgetelde confidence, niet
+  // simpelweg het aantal treffers (issue #23). Een kale hit-count behandelde
+  // een treffer op een generieke productnaam (bv. hetzelfde vaccin in twee
+  // scenario's, zie domMatcher.ts issue #21) even zwaar als een treffer op
+  // een specifieke, patiëntgebonden waarde — waardoor twee scenario's met
+  // hetzelfde vaccin bij een andere patiënt door elkaar gehaald konden
+  // worden. Confidence weegt dit nu automatisch mee, zonder dat er per item
+  // een aparte "is dit identificerend?"-classificatie nodig is.
+  const scoresPerScenario = new Map<string, number>();
   for (const scenario of script.scenarios) {
-    const hits = scenario.checklistItems.filter((i) => domMatchIds.has(i.id)).length;
-    if (hits > 0) hitsPerScenario.set(scenario.id, hits);
+    const score = scenario.checklistItems.reduce((sum, item) => {
+      const match = domMatchById.get(item.id);
+      return sum + (match?.confidence ?? 0);
+    }, 0);
+    if (score > 0) scoresPerScenario.set(scenario.id, score);
   }
   let scenarioGuess = script.scenarios.find(
-    (s) => s.id === [...hitsPerScenario.entries()].sort((a, b) => b[1] - a[1])[0]?.[0],
+    (s) => s.id === [...scoresPerScenario.entries()].sort((a, b) => b[1] - a[1])[0]?.[0],
   );
 
   // Performance (issue #16): AI-vision is voor deze pilot-gegevensdienst
@@ -239,7 +250,7 @@ export async function captureAndSuggest(
         // altijd alle scenario's — scheelt promptgrootte, kosten en tijd
         // (issue #16). Bij een twijfelachtige of ontbrekende gok blijft
         // alles meegaan, zodat de AI ook kan helpen het scenario te bepalen.
-        knownScenarios: pickAiContextScenarios(script, hitsPerScenario, scenarioGuess),
+        knownScenarios: pickAiContextScenarios(script, scoresPerScenario, scenarioGuess),
         alreadyFoundChecklistItemIds: [...domMatchIds],
       });
     } catch {
