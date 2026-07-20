@@ -156,11 +156,19 @@ export function App() {
   }
 
   async function handleConfirmEvidence() {
-    if (!session || !draft) return;
+    if (!session || !script || !draft) return;
     setBusy(true);
     setError(undefined);
     try {
       await confirmEvidence(session, draft, reviewElements);
+      // Issue #15: confirmEvidence() zet bij de EERSTE capture session.markerColor
+      // (muteert hetzelfde object, geen nieuwe sessie). Zonder dit hier opnieuw
+      // op te slaan bleef de chrome.storage.session-snapshot op de oude/lege
+      // kleur staan: sluit je het side panel daarna en open je het opnieuw, dan
+      // koos confirmEvidence() bij de volgende capture een NIEUWE kleur — met
+      // afwijkende kaderkleuren tussen bewijsstukken in hetzelfde rapport tot
+      // gevolg.
+      await saveActiveSession(session, script);
       setDraft(undefined);
       setStep("navigate");
     } catch (e) {

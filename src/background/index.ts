@@ -6,21 +6,20 @@
 
 import type { CaptureEvidenceCommand } from "../shared/messages";
 
-// Belangrijk: chrome.sidePanel.open-on-click en chrome.action.onClicked zijn
-// wederzijds exclusief — als openPanelOnActionClick ooit op true is gezet
-// (bv. door een eerdere versie van deze code), blijft die vlag hangen in het
-// browserprofiel, ook nadat de aanroep uit de code is gehaald, en onderdrukt
-// die dan alsnog onClicked. Daarom hier expliciet terugzetten naar false vóór
-// de onClicked-listener wordt geregistreerd.
+// Issue #14 (klik op het werkbalk-icoon opende het side panel niet
+// betrouwbaar): de eerdere aanpak deed dit handmatig via
+// chrome.action.onClicked + chrome.sidePanel.open(), wat gevoelig bleek voor
+// timing-problemen — als de service worker net wakker gemaakt moest worden
+// door de klik, kon de user-gesture-context verlopen zijn tegen de tijd dat
+// open() daadwerkelijk werd aangeroepen. Chrome heeft hier een nátief
+// mechanisme voor dat deze race niet kent: openPanelOnActionClick laat de
+// browser zelf het paneel openen bij een klik, vóór er JS aan te pas komt.
+// chrome.sidePanel.open-on-click en chrome.action.onClicked zijn wederzijds
+// exclusief (bij true vuurt onClicked niet meer) — vandaar geen aparte
+// onClicked-listener meer hieronder.
 chrome.sidePanel
-  .setPanelBehavior({ openPanelOnActionClick: false })
-  .catch((error) => console.error("Kon side panel-gedrag niet resetten:", error));
-
-chrome.action.onClicked.addListener(async (tab) => {
-  if (tab.windowId !== undefined) {
-    await chrome.sidePanel.open({ windowId: tab.windowId });
-  }
-});
+  .setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((error) => console.error("Kon side panel-gedrag niet instellen:", error));
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== "capture-evidence") return;
