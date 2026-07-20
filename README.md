@@ -1,6 +1,6 @@
 # PGO kwalificatie extension
 
-***Let op: dit is een prototype en haar AI gegenereerde code en zou niet zonder meer overgenomen moeten worden.***
+***Let op: dit is een prototype en haar AI gegenereerde code zou niet zonder meer overgenomen moeten worden.***
 
 Browserextensie die PGO-leveranciers helpt bij het MedMij-kwalificatietraject
 voor systeemrol **Raadplegen**. Tijdens het testen van de eigen PGO legt de
