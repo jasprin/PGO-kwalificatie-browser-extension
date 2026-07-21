@@ -7,20 +7,12 @@
 import type { CaptureEvidenceCommand } from "../shared/messages";
 
 // Issue #14 (klik op het werkbalk-icoon opende het side panel niet
-// betrouwbaar): de eerdere aanpak deed dit handmatig via
-// chrome.action.onClicked + chrome.sidePanel.open(), wat gevoelig bleek voor
-// timing-problemen — als de service worker net wakker gemaakt moest worden
-// door de klik, kon de user-gesture-context verlopen zijn tegen de tijd dat
-// open() daadwerkelijk werd aangeroepen. Chrome heeft hier een nátief
-// mechanisme voor dat deze race niet kent: openPanelOnActionClick laat de
-// browser zelf het paneel openen bij een klik, vóór er JS aan te pas komt.
-// chrome.sidePanel.open-on-click en chrome.action.onClicked zijn wederzijds
-// exclusief (bij true vuurt onClicked niet meer) — vandaar geen aparte
-// onClicked-listener meer hieronder.
-chrome.sidePanel
-  .setPanelBehavior({ openPanelOnActionClick: true })
-  .catch((error) => console.error("Kon side panel-gedrag niet instellen:", error));
-
+// betrouwbaar): zowel de handmatige chrome.action.onClicked +
+// chrome.sidePanel.open()-aanpak als het nátieve
+// setPanelBehavior({openPanelOnActionClick: true})-mechanisme bleken
+// onbetrouwbaar — niet alleen in Brave maar ook in Edge. We laten de
+// klik-op-icoon-flow daarom over aan het paneel-icoon van de browser zelf
+// (zie README "Gebruiken"); hier resteert alleen het openen via de hotkey.
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== "capture-evidence") return;
 

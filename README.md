@@ -58,7 +58,7 @@ API-key in.
 
 ## Gebruiken
 
-1. Klik op het extensie-icoon — de side panel opent.
+1. Rechtermuisklik op het extensie-icoon en kies **"Zijvenster openen"**.
 2. Plak de URL van het kwalificatiescript (Nictiz-wiki) van de
    gegevensdienst, controleer/corrigeer de voorgestelde T-datum, klik
    "Sessie starten".
