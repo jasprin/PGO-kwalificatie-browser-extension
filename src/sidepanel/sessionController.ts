@@ -99,7 +99,7 @@ export interface ProposedElement {
 /** Fractie van de items mét een verwachte waarde in dit scenario die
  * DOM-matching al met voldoende vertrouwen gevonden heeft — basis voor het
  * overslaan van de AI-call (issue #16). */
-function domCoverageRatio(scenario: Scenario, domMatches: DomMatchResult[]): number {
+export function domCoverageRatio(scenario: Scenario, domMatches: DomMatchResult[]): number {
   const itemsWithExpectedValue = scenario.checklistItems.filter((i) => i.expectedValue);
   if (itemsWithExpectedValue.length === 0) return 0;
   const domMatchById = new Map(domMatches.map((m) => [m.checklistItemId, m]));
@@ -120,7 +120,7 @@ function domCoverageRatio(scenario: Scenario, domMatches: DomMatchResult[]): num
  * "gevonden ratio" die daar bepaalt of tier 2 nodig is, werd kunstmatig
  * verdund doordat die ooit over alle 92 items van 3 scenario's ging i.p.v.
  * over alleen de ~30 items die voor het huidige scherm relevant konden zijn. */
-function pickAiContextScenarios(
+export function pickAiContextScenarios(
   script: QualificationScript,
   scoresPerScenario: Map<string, number>,
   scenarioGuess: Scenario | undefined,

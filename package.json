@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "npx tsx tests/wikiParser.test.mjs && npx tsx tests/domMatcher.test.mjs && npx tsx tests/reportGenerator.test.mjs && npx tsx tests/tDate.test.mjs"
+    "test": "npx tsx tests/wikiParser.test.mjs && npx tsx tests/domMatcher.test.mjs && npx tsx tests/reportGenerator.test.mjs && npx tsx tests/tDate.test.mjs && npx tsx tests/sessionController.test.mjs"
   },
   "repository": {
     "type": "git",
