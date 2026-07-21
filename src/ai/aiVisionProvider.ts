@@ -151,12 +151,18 @@ Lees dit aandachtig, het is de kern van je taak:
 Bepaal: (a) bij welk scenario dit scherm hoort, (b) welke verwachte elementen daadwerkelijk zichtbaar zijn (concentreer je op elementen die nog NIET via tekstmatch gevonden zijn — die zijn mogelijk anders weergegeven dan de rauwe testwaarde, bv. vertaald, samengevat, of als vrije tekst), (c) citeer per zichtbaar element de letterlijke tekst (visualEvidence) en geef een korte toelichting voor een beoordelaar die de applicatie niet kent, en (d) geef voor elk zichtbaar element ook een region (fractie 0-1 van breedte/hoogte van de afbeelding) van waar het ongeveer staat. Rapporteer je bevindingen via de report_evidence-tool.`;
 }
 
+// Chunked i.p.v. byte-voor-byte (issue #39): een screenshot kan een paar MB
+// zijn, en String.fromCharCode(...bytes) in één keer op zo'n grote array
+// loopt tegen de argumentenlimiet van de JS-engine aan — vandaar blokken van
+// CHUNK_SIZE, ruim daaronder.
+const BASE64_CHUNK_SIZE = 0x8000;
+
 async function blobToBase64(blob: Blob): Promise<string> {
   const buffer = await blob.arrayBuffer();
-  let binary = "";
   const bytes = new Uint8Array(buffer);
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += BASE64_CHUNK_SIZE) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + BASE64_CHUNK_SIZE));
   }
   return btoa(binary);
 }

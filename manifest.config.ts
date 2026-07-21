@@ -8,6 +8,13 @@ import pkg from "./package.json";
 // domeinspecifieke matches nodig.
 const PGO_MATCHES = ["<all_urls>"];
 
+const ICONS = {
+  16: "src/assets/icons/icon-16.png",
+  32: "src/assets/icons/icon-32.png",
+  48: "src/assets/icons/icon-48.png",
+  128: "src/assets/icons/icon-128.png",
+};
+
 export default defineManifest({
   manifest_version: 3,
   name: "PGO kwalificatie extension",
@@ -16,19 +23,9 @@ export default defineManifest({
     "Helpt PGO-leveranciers bij het MedMij-kwalificatietraject (systeemrol Raadplegen) door bewijs-screenshots te markeren en een zelfverklarend rapport te genereren.",
   action: {
     default_title: "PGO kwalificatie extension",
-    default_icon: {
-      16: "src/assets/icons/icon-16.png",
-      32: "src/assets/icons/icon-32.png",
-      48: "src/assets/icons/icon-48.png",
-      128: "src/assets/icons/icon-128.png",
-    },
+    default_icon: ICONS,
   },
-  icons: {
-    16: "src/assets/icons/icon-16.png",
-    32: "src/assets/icons/icon-32.png",
-    48: "src/assets/icons/icon-48.png",
-    128: "src/assets/icons/icon-128.png",
-  },
+  icons: ICONS,
   side_panel: {
     default_path: "src/sidepanel/index.html",
   },
