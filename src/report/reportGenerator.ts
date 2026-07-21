@@ -66,7 +66,7 @@ function buildScenarioSection(
       const labelText = item.bundleLabel
         ? `${escapeHtml(item.label)} <span style="color:#666">(${escapeHtml(item.bundleLabel)})</span>`
         : escapeHtml(item.label);
-      return `<tr id="item-${item.id}">
+      return `<tr id="item-${escapeHtml(item.id)}">
         <td>${item.order}</td>
         <td>${labelText}</td>
         <td>${statusText}</td>
@@ -94,7 +94,7 @@ function buildEvidenceSection(
       const item = scenario?.checklistItems.find(
         (i) => i.id === marking.checklistItemId,
       );
-      return `<li><a href="#item-${marking.checklistItemId}">${marking.sequenceNumber}. ${escapeHtml(item?.label ?? marking.checklistItemId)}</a></li>`;
+      return `<li><a href="#item-${escapeHtml(marking.checklistItemId)}">${marking.sequenceNumber}. ${escapeHtml(item?.label ?? marking.checklistItemId)}</a></li>`;
     })
     .join("\n");
 
