@@ -16,6 +16,18 @@ export default defineManifest({
     "Helpt PGO-leveranciers bij het MedMij-kwalificatietraject (systeemrol Raadplegen) door bewijs-screenshots te markeren en een zelfverklarend rapport te genereren.",
   action: {
     default_title: "PGO kwalificatie extension",
+    default_icon: {
+      16: "src/assets/icons/icon-16.png",
+      32: "src/assets/icons/icon-32.png",
+      48: "src/assets/icons/icon-48.png",
+      128: "src/assets/icons/icon-128.png",
+    },
+  },
+  icons: {
+    16: "src/assets/icons/icon-16.png",
+    32: "src/assets/icons/icon-32.png",
+    48: "src/assets/icons/icon-48.png",
+    128: "src/assets/icons/icon-128.png",
   },
   side_panel: {
     default_path: "src/sidepanel/index.html",
